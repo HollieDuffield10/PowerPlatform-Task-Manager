@@ -1,0 +1,117 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr862_sharedcommondataserviceforapps_d1492"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr862_sharedoffice365_44038"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "undefined",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Day",
+            "interval": "1",
+            "startTime": "2025-02-05T09:00:00Z"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "List_rows": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "entityName": "cr862_taskses",
+              "$filter": "cr862_duedate lt @{formatDateTime(utcNow(),'yyyy-MM-dd')} and cr862_status ne 3"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "For_each": {
+          "foreach": "@outputs('List_rows')?['body/value']",
+          "actions": {
+            "Get_a_row_by_ID": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "entityName": "cr862_userses",
+                  "recordId": "@items('For_each')?['_cr862_assignedto_value']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "GetItem"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Send_an_email_(V2)": {
+              "runAfter": {
+                "Get_a_row_by_ID": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "emailMessage/To": "@outputs('Get_a_row_by_ID')?['body/cr862_email']",
+                  "emailMessage/Subject": "\"⚠️ Overdue Task: @{item()?['cr862_tasktitle']}\"",
+                  "emailMessage/Body": "<p class=\"editor-paragraph\">Hi @{outputs('Get_a_row_by_ID')?['body/cr862_fullname']},</p><br><p class=\"editor-paragraph\">The task \"@{item()?['cr862_tasktitle']}\" assigned to you is overdue.</p><br><p class=\"editor-paragraph\"><b><strong class=\"editor-text-bold\">Details:</strong></b></p><p class=\"editor-paragraph\">Priority: @{item()?['cr862_priority']}</p><p class=\"editor-paragraph\">Due Date: @{item()?['cr862_duedate']}</p><p class=\"editor-paragraph\">Status: @{item()?['cr862_status']}</p><br><p class=\"editor-paragraph\">Please update the task as soon as possible.</p><br><p class=\"editor-paragraph\">Thank you!</p>",
+                  "emailMessage/Importance": "Normal"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "List_rows": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach"
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}
